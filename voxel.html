@@ -36,6 +36,11 @@
   .pill b{color:var(--accent);font-variant-numeric:tabular-nums}
   #hudR{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
   #clockDot{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  #miniBtns{display:flex;gap:6px;pointer-events:auto}
+  .mbtn{font:inherit;font-size:12px;font-weight:bold;letter-spacing:.5px;cursor:pointer;color:var(--frame);
+    background:var(--accent-2);border:0;border-radius:4px;padding:6px 10px;min-width:40px;
+    box-shadow:0 3px 0 #5fae83,0 3px 0 2px var(--frame)}
+  .mbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #5fae83,0 1px 0 2px var(--frame)}
 
   #toast{position:fixed;left:50%;top:20%;transform:translateX(-50%);z-index:13;pointer-events:none;
     text-align:center;opacity:0;transition:opacity .5s}
@@ -63,6 +68,8 @@
   .tbtn{width:64px;height:64px;border-radius:50%;border:0;font:inherit;font-size:11px;font-weight:bold;letter-spacing:.5px;
     color:var(--frame);background:var(--accent);box-shadow:0 4px 0 #c67e3b,0 4px 0 3px var(--frame)}
   .tbtn.sec{background:var(--accent-2)}
+  .tbtn.bow{background:#c9b3e8;width:56px;height:56px;font-size:10px}
+  .tbtn.fire{background:#e68a8a;width:56px;height:56px;font-size:10px}
   .tbtn.jump{background:#cfe3ef;width:72px;height:72px;font-size:12px}
   .tbtn:active{transform:translateY(3px);box-shadow:0 1px 0 #c67e3b,0 1px 0 3px var(--frame)}
 
@@ -109,7 +116,11 @@
   <div class="pill" id="area">Driftwood Cove</div>
   <div id="hudR">
     <div class="pill"><span id="clockDot"></span><span id="clockTxt">—</span></div>
-    <div class="pill">Seen <b id="disc">1</b>/9</div>
+    <div class="pill">Seen <b id="disc">1</b>/<span id="discN">11</span></div>
+    <div id="miniBtns">
+      <button class="mbtn" id="bView" title="Toggle view (V)">TOP</button>
+      <button class="mbtn" id="bMusic" title="Toggle music">♪</button>
+    </div>
   </div>
 </div>
 
@@ -131,6 +142,8 @@
     <button class="tbtn jump" id="bJump">JUMP</button>
     <button class="tbtn" id="bBreak">BREAK</button>
     <button class="tbtn sec" id="bPlace">PLACE</button>
+    <button class="tbtn bow" id="bBow">BOW</button>
+    <button class="tbtn fire" id="bFire">▶ FIRE</button>
   </div>
 </div>
 
@@ -209,8 +222,8 @@
     let dx=(x-cx)/maxR, dz=(z-cz)/maxR, dist=Math.sqrt(dx*dx+dz*dz);
     dist += (fbm(nDet,x*0.05,z*0.05,3)-0.5)*0.28;
     let e=fbm(nElev,x*0.028,z*0.028,5);
-    e = e*1.25 - dist*1.05;
-    return Math.round(SEA + e*30);
+    e = e*1.05 - dist*1.05;
+    return Math.round(SEA + e*20);   // gentler relief — far less climbing
   }
   function genTerrain(){
     for(let x=0;x<WX;x++)for(let z=0;z<WZ;z++){
@@ -245,8 +258,9 @@
       if(getV(x,h,z)!==B.GRASS)continue;
       const m=fbm(nMoist,x*0.05+40,z*0.05+40,4);
       const r=wrng();
-      if(r<(m>0.5?0.05:0.02)) plantTree(x,h+1,z);
-      else if(r<0.11) setV(x,h+1,z,B.FLOWER);
+      // fewer trees: thinned way down, and kept out of a clearing radius
+      if(r<(m>0.6?0.018:0.006)) plantTree(x,h+1,z);
+      else if(r<0.07) setV(x,h+1,z,B.FLOWER);
     }
     buildLandmarks();
   }
@@ -296,6 +310,73 @@
     }
     for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++) setV(x+dx,h+4,z+dz,B.WOOD);
   }
+  // A proper walk-in house: 7x7 plank cabin, wood floor, window gaps, a door,
+  // a peaked roof and a warm flower "lamp". You can step inside.
+  let HOUSE=null;
+  function buildHouse(x,z){
+    const h=plaza(x,z,5,B.PLANK); const f=h;         // floor level
+    const R=3;                                        // half-width (7x7)
+    for(let dx=-R;dx<=R;dx++)for(let dz=-R;dz<=R;dz++){
+      setV(x+dx,f,z+dz,B.PLANK);                       // floor
+      const edge=(Math.abs(dx)===R||Math.abs(dz)===R);
+      if(edge) for(let y=1;y<=3;y++){
+        // doorway on the -z wall (facing the cove), windows on the sides
+        const door=(dx===0&&dz===-R&&y<=2);
+        const win=((Math.abs(dx)===2&&Math.abs(dz)===R&&y===2)||(Math.abs(dz)===2&&Math.abs(dx)===R&&y===2));
+        if(!door&&!win) setV(x+dx,f+y,z+dz,B.WOOD);
+      }
+    }
+    // peaked roof
+    for(let k=0;k<=R;k++){ const y=f+4+k;
+      for(let dx=-R+k;dx<=R-k;dx++)for(let dz=-R+k;dz<=R-k;dz++)
+        if(Math.abs(dx)===R-k||Math.abs(dz)===R-k) setV(x+dx,y,z+dz,B.LEAF);
+    }
+    setV(x,f+4,z,B.FLOWER);                            // ridge cap
+    setV(x,f+1,z,B.FLOWER);                            // a cozy "lamp" inside
+    // a golden bed with a bedsheet, tucked in the back-right corner inside
+    buildBed(x+2, f+1, z+2);
+    HOUSE={x,z,f};
+  }
+  // A golden bed: a solid GOLD frame (2 blocks long, so it's real/collidable)
+  // dressed with a soft model on top — a cream bedsheet, a folded blanket and a
+  // pillow — built from little colored boxes like the characters. Deferred until
+  // the scene exists (called from buildBedModels after terrain).
+  const BEDS=[];
+  function buildBed(x,y,z){
+    for(let dz=0;dz<=1;dz++) setV(x,y,z+dz,B.GOLD);   // golden frame/base (voxels)
+    setV(x-1,y,z,B.PLANK);                            // bedside rug plank
+    BEDS.push({x,y,z});
+  }
+  function buildBedModels(){
+    for(const b of BEDS){ const g=new THREE.Group();
+      // cream bedsheet draped over the two base blocks
+      const sheet=boxMesh(0.96,0.22,1.96,0xf3ecdd); sheet.position.set(0,0.6,0.5); g.add(sheet);
+      // a folded sea-green blanket across the foot of the bed
+      const blanket=boxMesh(0.99,0.16,0.8,0x7fb8a0); blanket.position.set(0,0.72,1.1); g.add(blanket);
+      // plump pillow at the head
+      const pillow=boxMesh(0.8,0.26,0.5,0xffffff); pillow.position.set(0,0.78,-0.1); g.add(pillow);
+      // gold posts peeking above the sheet (match the frame)
+      for(const sz of[-0.4,1.4]){ const post=boxMesh(0.18,0.5,0.18,0xf2c84b); post.position.set(0,0.75,sz); g.add(post); }
+      g.position.set(b.x+0.5, b.y, b.z); scene.add(g);
+    }
+  }
+  // An underground bunker: a hollow 7x7x3 stone room reached by a vertical shaft
+  // with a ladder of planks. A marker torch-flower sits at the hatch on the surface.
+  let BUNKER=null;
+  function buildBunker(x,z){
+    const surf=topSolid(x,z); if(surf<0)return;
+    const roomTop=surf-2, roomH=3, roomBot=roomTop-roomH; const R=3;
+    for(let dx=-R;dx<=R;dx++)for(let dz=-R;dz<=R;dz++)for(let y=roomBot;y<=roomTop;y++){
+      const shell=(Math.abs(dx)===R||Math.abs(dz)===R||y===roomBot||y===roomTop);
+      setV(x+dx,y,z+dz, shell?B.STONE:B.AIR);
+    }
+    // shaft from the surface down into the room, with plank ladder-steps
+    for(let y=surf;y>roomTop-1;y--){ setV(x,y,z,B.AIR); setV(x+1,y,z,B.PLANK); }
+    setV(x,surf+1,z,B.FLOWER);                          // hatch marker on top
+    // a little loot + light inside
+    setV(x-2,roomBot+1,z-2,B.FLOWER); setV(x+2,roomBot+1,z+2,B.FLOWER);
+    dropChest(x,roomBot+1,z); BUNKER={x,z,y:roomBot+1};
+  }
   const CHESTS=[];
   function dropChest(x,y,z){ setV(x,y,z,B.CRYSTAL); CHESTS.push({x,y,z,opened:false}); }
   function buildLandmarks(){
@@ -320,7 +401,13 @@
       else if(s.kind==='ember'){ plaza(s.x,s.z,4,B.STONE); }
       else if(s.kind==='point'){ const h=topSolid(s.x,s.z); for(let y=1;y<=7;y++)setV(s.x,h+y,s.z,y===7?B.FLOWER:B.PLANK); }
     }
+    // Jhimu's own house just inland from the cove, and a hidden bunker beyond it
+    buildHouse((WX/2|0)+9, WZ-18);
+    buildBunker((WX/2|0)-10, WZ-22);
+    REGIONS.push({name:"Jhimu's House", x:(WX/2|0)+9, z:WZ-18, kind:'house'});
+    REGIONS.push({name:"The Bunker",    x:(WX/2|0)-10,z:WZ-22, kind:'bunker'});
     pathLine(SPAWN.x|0, SPAWN.z|0, VILLAGE.x, VILLAGE.z);
+    pathLine(SPAWN.x|0, SPAWN.z|0, (WX/2|0)+9, WZ-18);
   }
   function pathLine(x0,z0,x1,z1){
     let x=x0,z=z0,guard=0;
@@ -538,10 +625,104 @@
   }
   function groundYAt(x,z){ const h=topSolid(Math.floor(x),Math.floor(z)); return h+1; }
 
+  // ==========================================================================
+  //  BOW & ARROW  +  NUDEOK DOSA (the old man)
+  //  Press B to draw/stow the bow, F (or the ARROW button) to fire. Hit the
+  //  wandering old man Nudeok Dosa a few times to defeat him.
+  // ==========================================================================
+  let bowEquipped=false;
+  const arrows=[];        // {mesh, vel, life}
+  let nudeok=null;        // {grp, hp, vx, vz, heading, t, alive, label}
+
+  function makeNudeok(x,y,z){
+    const g=new THREE.Group();
+    const robe=boxMesh(0.7,0.95,0.5,0x6b5b8a); robe.position.y=0.75; g.add(robe);
+    const head=boxMesh(0.42,0.42,0.42,0xe7c6a0); head.position.y=1.42; g.add(head);
+    const hair=boxMesh(0.48,0.16,0.48,0xe8e8e8); hair.position.y=1.66; g.add(hair);      // white hair
+    const beard=boxMesh(0.3,0.35,0.12,0xf0f0f0); beard.position.set(0,1.18,0.24); g.add(beard); // long white beard
+    const staff=boxMesh(0.08,1.3,0.08,0x6a4a2a); staff.position.set(0.42,0.85,0); g.add(staff);
+    for(const sx of[-0.18,0.18]){ const leg=boxMesh(0.2,0.5,0.2,0x4a3f63); leg.position.set(sx,0.25,0); g.add(leg); }
+    g.position.set(x,y,z); scene.add(g);
+    const label=makeLabel('NUDEOK DOSA','#e6a1a1'); label.position.set(x,y+2.4,z); label.scale.set(5,1.25,1); scene.add(label);
+    nudeok={grp:g, hp:5, maxhp:5, vx:0, vz:0, heading:Math.random()*6.28, t:0, alive:true, label};
+  }
+  function spawnNudeok(){
+    // put him in the meadow between the village and the lake
+    const x=(WX/2|0)-2, z=(WZ/2|0)+3, h=topSolid(x,z);
+    makeNudeok(x+0.5, (h>0?h:SEA)+1, z+0.5);
+  }
+  function updateNudeok(dt){
+    if(!nudeok||!nudeok.alive)return; const m=nudeok, p=m.grp.position;
+    m.t-=dt; if(m.t<=0){ m.heading=Math.random()*6.28; m.t=1.5+Math.random()*2.5; }
+    // shuffle slowly; flee a little if the player is close with a bow
+    let sp=0.8; const dpx=player.pos.x-p.x, dpz=player.pos.z-p.z, dp=Math.hypot(dpx,dpz);
+    if(bowEquipped && dp<10){ m.heading=Math.atan2(-dpz,-dpx); sp=1.8; }
+    m.vx=Math.cos(m.heading)*sp; m.vz=Math.sin(m.heading)*sp;
+    let nx=p.x+m.vx*dt, nz=p.z+m.vz*dt;
+    if(solidAtCell(nx,p.y+0.2,p.z)){ m.heading+=Math.PI; nx=p.x; }
+    if(solidAtCell(p.x,p.y+0.2,nz)){ m.heading+=Math.PI; nz=p.z; }
+    p.x=Math.max(1,Math.min(WX-1,nx)); p.z=Math.max(1,Math.min(WZ-1,nz));
+    const gy=groundYAt(p.x,p.z); p.y=gy;
+    m.grp.rotation.y=-m.heading+Math.PI/2;
+    m.label.position.set(p.x,p.y+2.4,p.z);
+  }
+  function nudeokHit(){
+    if(!nudeok||!nudeok.alive)return; nudeok.hp--; chime(3);
+    // flash red
+    nudeok.grp.traverse(o=>{ if(o.material&&o.material.color){ const c=o.material.color.clone(); o.material.color.set(0xff5544); setTimeout(()=>o.material.color.copy(c),120);} });
+    if(nudeok.hp<=0){ nudeok.alive=false; const g=nudeok.grp, lb=nudeok.label;
+      g.scale.set(1,0.1,1); setTimeout(()=>{scene.remove(g);scene.remove(lb);},300);
+      toast('Nudeok Dosa defeated!','Victory'); chimeUp();
+    } else { toast('Nudeok Dosa — '+nudeok.hp+' hits left','Hit'); }
+  }
+  function fireArrow(){
+    if(!bowEquipped){ toast('Press B to draw your bow first','Bow'); return; }
+    const d=getLookDir();
+    const shaft=new THREE.Group();
+    const stick=boxMesh(0.08,0.08,0.7,0x8a5a2a); shaft.add(stick);
+    const tip=boxMesh(0.12,0.12,0.14,0xcfd4da); tip.position.z=0.42; shaft.add(tip);
+    shaft.position.set(player.pos.x+d.x*0.6, player.pos.y+PH.eye-0.1, player.pos.z+d.z*0.6);
+    shaft.lookAt(shaft.position.x+d.x, shaft.position.y+d.y, shaft.position.z+d.z);
+    scene.add(shaft);
+    const SPD=26;
+    arrows.push({mesh:shaft, vel:new THREE.Vector3(d.x*SPD,d.y*SPD,d.z*SPD), life:3});
+    chime(5);
+  }
+  function updateArrows(dt){
+    for(let i=arrows.length-1;i>=0;i--){ const a=arrows[i];
+      a.vel.y-=14*dt;                         // gravity drop
+      const p=a.mesh.position;
+      p.x+=a.vel.x*dt; p.y+=a.vel.y*dt; p.z+=a.vel.z*dt;
+      a.mesh.lookAt(p.x+a.vel.x, p.y+a.vel.y, p.z+a.vel.z);
+      a.life-=dt;
+      let dead=false;
+      // hit the old man?
+      if(nudeok&&nudeok.alive){ const np=nudeok.grp.position;
+        const dx=p.x-np.x, dy=p.y-(np.y+1), dz=p.z-np.z;
+        if(dx*dx+dy*dy+dz*dz < 0.8*0.8){ nudeokHit(); dead=true; } }
+      // hit a block or fall out / expire?
+      if(!dead && (solidAtCell(p.x,p.y,p.z) || a.life<=0 || p.y<-5)) dead=true;
+      if(dead){ scene.remove(a.mesh); arrows.splice(i,1); }
+    }
+  }
+
   // ---- Player / physics ----------------------------------------------------
   const player={pos:new THREE.Vector3(), vel:new THREE.Vector3(), yaw:Math.PI, pitch:0, onGround:false};
   const PH={w:0.3, h:1.62, eye:1.5, speed:5.4, jump:8.0, grav:24};
   function resetPlayer(){ player.pos.set(SPAWN.x,SPAWN.y,SPAWN.z); player.vel.set(0,0,0); player.yaw=Math.PI; player.pitch=0; }
+
+  // ---- Camera view mode (first-person <-> top-down) ------------------------
+  let viewMode='fp';   // 'fp' | 'top'
+  function toggleView(){ viewMode = viewMode==='fp' ? 'top' : 'fp';
+    const b=document.getElementById('bView'); if(b) b.textContent = viewMode==='fp'?'TOP':'1ST';
+    toast(viewMode==='top'?'Top-down view':'First-person view','View'); }
+  // A little block-girl avatar shown only in top-down so you can see Jhimu.
+  const jhimuAvatar=(function(){ const g=new THREE.Group();
+    const body=boxMesh(0.55,0.7,0.35,0xd96a8f); body.position.y=0.95; g.add(body);
+    const head=boxMesh(0.45,0.45,0.45,0xf0c9a0); head.position.y=1.55; g.add(head);
+    const hair=boxMesh(0.5,0.22,0.5,0x3a2a22); hair.position.y=1.78; g.add(hair);
+    for(const sx of[-0.17,0.17]){ const leg=boxMesh(0.2,0.6,0.2,0x3b4a66); leg.position.set(sx,0.3,0); g.add(leg); }
+    g.visible=false; scene.add(g); return g; })();
 
   function collide(axis){
     const p=player.pos, w=PH.w, h=PH.h;
@@ -561,7 +742,11 @@
   // ---- Input ---------------------------------------------------------------
   const keys={};
   addEventListener('keydown',e=>{ keys[e.code]=true; if(e.code==='Space')e.preventDefault();
+    if(e.repeat)return;                 // below: one-shot actions, ignore key auto-repeat
     if(e.code==='KeyE'){ onInteract(); }
+    if(e.code==='KeyV'){ toggleView(); }
+    if(e.code==='KeyB'){ bowEquipped=!bowEquipped; toast(bowEquipped?'Bow drawn':'Bow stowed','Weapon'); }
+    if(e.code==='KeyF'){ fireArrow(); }
     if(e.code.startsWith('Digit')){const n=+e.code.slice(5)-1;if(n>=0&&n<HOTBAR.length){heldIndex=n;renderHotbar();}} });
   addEventListener('keyup',e=>{ keys[e.code]=false; });
   // interact: start the game on the pad you're standing on
@@ -597,6 +782,10 @@
   bind('bJump',()=>jumpHeld=true,()=>jumpHeld=false);
   document.getElementById('bBreak').addEventListener('click',doBreak);
   document.getElementById('bPlace').addEventListener('click',doPlace);
+  document.getElementById('bBow').addEventListener('click',()=>{ bowEquipped=!bowEquipped; toast(bowEquipped?'Bow drawn':'Bow stowed','Weapon'); });
+  document.getElementById('bFire').addEventListener('click',fireArrow);
+  document.getElementById('bView').addEventListener('click',toggleView);
+  document.getElementById('bMusic').addEventListener('click',toggleMusic);
   function bind(id,on,off){ const el=document.getElementById(id);
     el.addEventListener('touchstart',e=>{e.preventDefault();on();},{passive:false});
     el.addEventListener('touchend',e=>{e.preventDefault();off&&off();},{passive:false});
@@ -614,6 +803,8 @@
   function doBreak(){
     // during a hitting game, BREAK/left-click is the game action instead of mining
     if(activeGame && activeGame.onHit){ activeGame.onHit(); return; }
+    // with the bow drawn, BREAK/left-click shoots an arrow instead of mining
+    if(bowEquipped){ fireArrow(); return; }
     const t=rayTarget(); if(!t)return; const v=getV(t.bx,t.by,t.bz); if(v===B.WATER)return;
     const ch=CHESTS.find(c=>c.x===t.bx&&c.y===t.by&&c.z===t.bz&&!c.opened);
     if(ch){ ch.opened=true; toast("Sea Relic","Found"); }
@@ -671,6 +862,48 @@
   function blip(f,d){ if(!actx)return;const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.09,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d+0.02);}
   function chime(n){blip(420*Math.pow(2,n/12),0.11);} function chimeUp(){blip(523,0.12);setTimeout(()=>blip(659,0.12),80);setTimeout(()=>blip(784,0.18),160);}
 
+  // ---- Calm background music ----------------------------------------------
+  // A gentle, slow ambient pad: soft sine voices playing a looping chord
+  // progression through a low-pass filter, with a quiet master gain so it
+  // sits far under the sound effects. Loops for the whole session.
+  let music=null, musicOn=true;
+  function startMusic(){
+    if(!actx||music)return;
+    const master=actx.createGain(); master.gain.value=0.0;
+    const lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=900; lp.Q.value=0.4;
+    lp.connect(master).connect(actx.destination);
+    // fade in slowly
+    master.gain.setValueAtTime(0.0001,actx.currentTime);
+    master.gain.exponentialRampToValueAtTime(0.09,actx.currentTime+4);
+    // A minor-pentatonic-ish calm progression (Hz): Am - F - C - G feel
+    const chords=[[220,261.63,329.63],[174.61,220,261.63],[196,246.94,329.63],[164.81,196,246.94]];
+    const beat=4.2;                       // seconds per chord — slow and breathy
+    let ci=0;
+    function voice(f,t,dur){ const o=actx.createOscillator(),g=actx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      // tiny detune shimmer
+      o.detune.value=(Math.random()*8-4);
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.11,t+dur*0.35);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.connect(g).connect(lp); o.start(t); o.stop(t+dur+0.1);
+    }
+    function schedule(){ if(!music)return; const t=actx.currentTime+0.05; const ch=chords[ci%chords.length];
+      for(const f of ch) voice(f,t,beat*1.15);
+      // a soft high sparkle now and then
+      if(Math.random()<0.5) voice(ch[2]*2,t+beat*0.5,beat*0.8);
+      ci++;
+    }
+    schedule();
+    const timer=setInterval(schedule,beat*1000);
+    music={master,lp,timer};
+  }
+  function toggleMusic(){ if(!actx)return; musicOn=!musicOn;
+    if(music){ music.master.gain.exponentialRampToValueAtTime(musicOn?0.09:0.0001, actx.currentTime+0.6); }
+    const b=document.getElementById('bMusic'); if(b) b.textContent=musicOn?'♪':'✕';
+    toast(musicOn?'Music on':'Music off','Audio');
+  }
+
   // ---- Resize --------------------------------------------------------------
   function resize(){ const w=innerWidth,h=innerHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
   addEventListener('resize',resize);
@@ -679,9 +912,21 @@
   let started=false,last=performance.now();
   function frame(now){
     const dt=Math.min(0.05,(now-last)/1000); last=now;
-    if(started){ update(dt); updateMobs(dt); gamesUpdate(); }
-    camera.position.set(player.pos.x,player.pos.y+PH.eye,player.pos.z);
-    const d=getLookDir(); camera.lookAt(camera.position.x+d.x,camera.position.y+d.y,camera.position.z+d.z);
+    if(started){ update(dt); updateMobs(dt); updateNudeok(dt); updateArrows(dt); gamesUpdate(); }
+    if(viewMode==='top'){
+      // bird's-eye: camera lifted high above Jhimu, looking straight down,
+      // yaw still turns the world so movement stays oriented.
+      const hcam=28, d=getLookDir();
+      camera.position.set(player.pos.x - d.x*2, player.pos.y+hcam, player.pos.z - d.z*2);
+      camera.lookAt(player.pos.x, player.pos.y, player.pos.z);
+      jhimuAvatar.visible=true;
+      jhimuAvatar.position.set(player.pos.x,player.pos.y,player.pos.z);
+      jhimuAvatar.rotation.y=player.yaw;
+    } else {
+      camera.position.set(player.pos.x,player.pos.y+PH.eye,player.pos.z);
+      const d=getLookDir(); camera.lookAt(camera.position.x+d.x,camera.position.y+d.y,camera.position.z+d.z);
+      jhimuAvatar.visible=false;
+    }
     applyTimeOfDay();
     renderer.render(scene,camera);
     requestAnimationFrame(frame);
@@ -904,17 +1149,17 @@
   // ---- Boot ----------------------------------------------------------------
   const fill=document.getElementById('fill');
   function boot(){
-    genTerrain(); spawnMobs(); buildGames(); renderHotbar(); resize();
+    genTerrain(); spawnMobs(); spawnNudeok(); buildBedModels(); buildGames(); renderHotbar(); resize();
     buildAllChunks(p=>{ fill.style.width=Math.round(p*100)+'%'; }, ()=>{
       resetPlayer();
       document.getElementById('startBtn').style.display='';
       document.getElementById('hint').textContent=isTouch
-        ? 'Stick to move · drag right to look · JUMP / BREAK / PLACE · step on a glowing pad to play a mini-game · dig for caves & ore.'
-        : 'Click to look · WASD + Space · left-click break / right-click place · 1–8 blocks · step on a glowing pad & press E for a mini-game.';
+        ? 'Stick to move · drag to look · JUMP / BREAK / PLACE · BOW then FIRE to shoot Nudeok Dosa · TOP for bird’s-eye · step on a glowing pad for a mini-game.'
+        : 'Click to look · WASD + Space · left-click break / right-click place · B draw bow, F fire (hunt old man Nudeok Dosa) · V top-down view · E for mini-games.';
     });
     requestAnimationFrame(frame);
   }
-  function start(){ started=true; ensureAudio();
+  function start(){ started=true; ensureAudio(); startMusic();
     document.getElementById('title').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
     if(!isTouch)canvas.requestPointerLock&&canvas.requestPointerLock();
