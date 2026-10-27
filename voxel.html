@@ -871,64 +871,83 @@
   function blip(f,d){ if(!actx)return;const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.09,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d+0.02);}
   function chime(n){blip(420*Math.pow(2,n/12),0.11);} function chimeUp(){blip(523,0.12);setTimeout(()=>blip(659,0.12),80);setTimeout(()=>blip(784,0.18),160);}
 
-  // ---- Peaceful piano music -----------------------------------------------
-  // A slow, sparse piano: struck notes (fast attack, long decay, a couple of
-  // soft harmonics for body) play a gentle pentatonic melody over very quiet
-  // sustained pad chords. Pretty but calm. Loops for the whole session.
+  // ---- Smooth ambient music -----------------------------------------------
+  // A warm, evolving soundscape (no piano): detuned saw pads swell through a
+  // slowly-breathing low-pass filter, a soft sub-bass moves underneath, and an
+  // occasional bell shimmer drifts over the top. A long 8-chord progression
+  // (~2.5 min) with slight randomness so it keeps changing rather than looping.
   let music=null, musicOn=true;
   function startMusic(){
     if(!actx||music)return;
-    const master=actx.createGain(); master.gain.value=0.0;
-    const lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2600; lp.Q.value=0.3;
-    lp.connect(master).connect(actx.destination);
-    master.gain.setValueAtTime(0.0001,actx.currentTime);
-    master.gain.exponentialRampToValueAtTime(0.16,actx.currentTime+3);
+    const master=actx.createGain(); master.gain.value=0.0001;
+    // a touch of "space" via a short feedback delay, kept subtle
+    const delay=actx.createDelay(1.0); delay.delayTime.value=0.38;
+    const fb=actx.createGain(); fb.gain.value=0.28;
+    const wet=actx.createGain(); wet.gain.value=0.22;
+    delay.connect(fb).connect(delay); delay.connect(wet).connect(master);
+    master.connect(actx.destination);
+    master.gain.exponentialRampToValueAtTime(0.18,actx.currentTime+5);  // slow fade-in
 
-    // A single struck piano note: fundamental + 2nd & 3rd harmonics, each with
-    // a plucked envelope (near-instant attack, slow exponential tail).
-    function piano(f,t,dur,vel){ vel=vel||1;
-      const parts=[[1,1.0],[2,0.4],[3,0.16]];
-      for(const [mult,amp] of parts){ const o=actx.createOscillator(),g=actx.createGain();
-        o.type='triangle'; o.frequency.value=f*mult;
-        const peak=0.12*amp*vel;
-        g.gain.setValueAtTime(0.0001,t);
-        g.gain.exponentialRampToValueAtTime(peak,t+0.012);
-        g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-        o.connect(g).connect(lp); o.start(t); o.stop(t+dur+0.05);
-      }
-    }
-    // A very soft sustained pad note under the melody.
-    function pad(f,t,dur){ const o=actx.createOscillator(),g=actx.createGain();
-      o.type='sine'; o.frequency.value=f; o.detune.value=(Math.random()*6-3);
+    // shared breathing filter for the pads — sweeps open and closed very slowly
+    const padFilter=actx.createBiquadFilter(); padFilter.type='lowpass';
+    padFilter.frequency.value=700; padFilter.Q.value=1.2;
+    padFilter.connect(master); padFilter.connect(delay);
+    const lfo=actx.createOscillator(), lfoGain=actx.createGain();
+    lfo.frequency.value=0.045;            // ~22s per sweep — the "breathing"
+    lfoGain.gain.value=600; lfo.connect(lfoGain).connect(padFilter.frequency); lfo.start();
+
+    // a warm detuned-saw pad voice (3 oscillators slightly apart)
+    function padVoice(f,t,dur,amp){ const g=actx.createGain();
       g.gain.setValueAtTime(0.0001,t);
-      g.gain.exponentialRampToValueAtTime(0.03,t+dur*0.4);
-      g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-      o.connect(g).connect(lp); o.start(t); o.stop(t+dur+0.1);
+      g.gain.exponentialRampToValueAtTime(amp,t+dur*0.3);     // long swell in
+      g.gain.setValueAtTime(amp,t+dur*0.7);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+dur);      // long fade out
+      g.connect(padFilter);
+      for(const det of [-7,0,7]){ const o=actx.createOscillator(); o.type='sawtooth';
+        o.frequency.value=f; o.detune.value=det; o.connect(g); o.start(t); o.stop(t+dur+0.1); }
     }
+    // soft sine sub-bass
+    function bass(f,t,dur){ const o=actx.createOscillator(),g=actx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.10,t+0.8);
+      g.gain.setValueAtTime(0.10,t+dur*0.6); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.connect(g).connect(master); o.start(t); o.stop(t+dur+0.1); }
+    // gentle bell shimmer (sine + octave), goes through the delay for space
+    function bell(f,t){ for(const [mult,a] of [[1,0.05],[2,0.025]]){ const o=actx.createOscillator(),g=actx.createGain();
+      o.type='sine'; o.frequency.value=f*mult;
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(a,t+0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+3.5);
+      o.connect(g); g.connect(delay); g.connect(master); o.start(t); o.stop(t+3.6); } }
 
-    // C major pentatonic across two octaves (Hz): C D E G A …
-    const scale=[261.63,293.66,329.63,392.00,440.00,523.25,587.33,659.25,783.99,880.00];
-    // Chord roots the melody drifts over: C – Am – F – G (quiet pad).
-    const padChords=[[130.81,196.00,261.63],[110.00,164.81,220.00],[174.61,220.00,261.63],[196.00,246.94,293.66]];
-    const bar=6.0;              // seconds per bar — unhurried
-    let prev=4, ci=0;
-    function schedule(){ if(!music)return; const t0=actx.currentTime+0.05;
-      // pad chord for the whole bar
-      for(const f of padChords[ci%padChords.length]) pad(f,t0,bar*1.1);
-      // 3–4 melody notes spread across the bar, stepping gently around the scale
-      const n=3+(Math.random()<0.5?1:0);
-      for(let i=0;i<n;i++){ const t=t0 + (i/n)*bar + Math.random()*0.3;
-        const step=(Math.random()*5|0)-2; prev=Math.max(0,Math.min(scale.length-1,prev+step));
-        piano(scale[prev], t, 3.2, 0.7+Math.random()*0.3);
-      }
+    // Long progression (root Hz + a major/minor triad), 8 chords → many bars.
+    // Dm7 - Bb - F - C - Am - Gm - Bb - C  (warm, drifting, never resolves hard)
+    const prog=[
+      {b:73.42, c:[146.83,174.61,220.00]},  // Dm
+      {b:58.27, c:[116.54,146.83,174.61]},  // Bb
+      {b:87.31, c:[174.61,220.00,261.63]},  // F
+      {b:65.41, c:[130.81,164.81,196.00]},  // C
+      {b:55.00, c:[110.00,130.81,164.81]},  // Am
+      {b:49.00, c:[98.00,116.54,146.83]},   // Gm
+      {b:58.27, c:[116.54,146.83,174.61]},  // Bb
+      {b:65.41, c:[130.81,164.81,196.00]},  // C
+    ];
+    const bar=9.0;                 // seconds per chord — very unhurried
+    const bellScale=[523.25,587.33,659.25,783.99,880.00,1046.50];
+    let ci=0;
+    function schedule(){ if(!music)return; const t0=actx.currentTime+0.05; const ch=prog[ci%prog.length];
+      for(const f of ch.c) padVoice(f,t0,bar*1.25,0.05+Math.random()*0.02);  // overlapping pads
+      bass(ch.b,t0,bar*1.1);
+      // a shimmer or two, placed randomly within the chord
+      if(Math.random()<0.75){ const n=1+(Math.random()<0.4?1:0);
+        for(let i=0;i<n;i++) bell(bellScale[Math.random()*bellScale.length|0], t0 + Math.random()*bar); }
       ci++;
     }
     schedule();
     const timer=setInterval(schedule,bar*1000);
-    music={master,lp,timer};
+    music={master,timer,lfo};
   }
   function toggleMusic(){ if(!actx)return; musicOn=!musicOn;
-    if(music){ music.master.gain.exponentialRampToValueAtTime(musicOn?0.16:0.0001, actx.currentTime+0.6); }
+    if(music){ music.master.gain.exponentialRampToValueAtTime(musicOn?0.18:0.0001, actx.currentTime+0.8); }
     const b=document.getElementById('bMusic'); if(b) b.textContent=musicOn?'♪':'✕';
     toast(musicOn?'Music on':'Music off','Audio');
   }
