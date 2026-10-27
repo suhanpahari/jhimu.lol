@@ -118,7 +118,7 @@
     <div class="pill"><span id="clockDot"></span><span id="clockTxt">—</span></div>
     <div class="pill">Seen <b id="disc">1</b>/<span id="discN">11</span></div>
     <div id="miniBtns">
-      <button class="mbtn" id="bView" title="Toggle view (V)">TOP</button>
+      <button class="mbtn" id="bView" title="Toggle view (V)">3RD</button>
       <button class="mbtn" id="bMusic" title="Toggle music">♪</button>
     </div>
   </div>
@@ -626,9 +626,9 @@
   function groundYAt(x,z){ const h=topSolid(Math.floor(x),Math.floor(z)); return h+1; }
 
   // ==========================================================================
-  //  BOW & ARROW  +  NUDEOK DOSA (the old man)
+  //  BOW & ARROW  +  JISNU (the old man)
   //  Press B to draw/stow the bow, F (or the ARROW button) to fire. Hit the
-  //  wandering old man Nudeok Dosa a few times to defeat him.
+  //  wandering old man Jisnu a few times to defeat him.
   // ==========================================================================
   let bowEquipped=false;
   const arrows=[];        // {mesh, vel, life}
@@ -643,7 +643,7 @@
     const staff=boxMesh(0.08,1.3,0.08,0x6a4a2a); staff.position.set(0.42,0.85,0); g.add(staff);
     for(const sx of[-0.18,0.18]){ const leg=boxMesh(0.2,0.5,0.2,0x4a3f63); leg.position.set(sx,0.25,0); g.add(leg); }
     g.position.set(x,y,z); scene.add(g);
-    const label=makeLabel('NUDEOK DOSA','#e6a1a1'); label.position.set(x,y+2.4,z); label.scale.set(5,1.25,1); scene.add(label);
+    const label=makeLabel('JISNU','#e6a1a1'); label.position.set(x,y+2.4,z); label.scale.set(4,1.1,1); scene.add(label);
     nudeok={grp:g, hp:5, maxhp:5, vx:0, vz:0, heading:Math.random()*6.28, t:0, alive:true, label};
   }
   function spawnNudeok(){
@@ -653,10 +653,19 @@
   }
   function updateNudeok(dt){
     if(!nudeok||!nudeok.alive)return; const m=nudeok, p=m.grp.position;
-    m.t-=dt; if(m.t<=0){ m.heading=Math.random()*6.28; m.t=1.5+Math.random()*2.5; }
-    // shuffle slowly; flee a little if the player is close with a bow
-    let sp=0.8; const dpx=player.pos.x-p.x, dpz=player.pos.z-p.z, dp=Math.hypot(dpx,dpz);
-    if(bowEquipped && dp<10){ m.heading=Math.atan2(-dpz,-dpx); sp=1.8; }
+    // keep a heading for longer so he strides across the island instead of
+    // shuffling in place; occasionally pick a far-off waypoint to walk toward.
+    m.t-=dt;
+    if(m.t<=0){
+      if(Math.random()<0.5){ // head toward a distant random point on the island
+        const tx=10+Math.random()*(WX-20), tz=10+Math.random()*(WZ-20);
+        m.heading=Math.atan2(tz-p.z, tx-p.x);
+      } else m.heading=Math.random()*6.28;
+      m.t=3+Math.random()*4;
+    }
+    // a brisk wander; flee faster if the player is close with a bow
+    let sp=2.6; const dpx=player.pos.x-p.x, dpz=player.pos.z-p.z, dp=Math.hypot(dpx,dpz);
+    if(bowEquipped && dp<12){ m.heading=Math.atan2(-dpz,-dpx); sp=4.2; }
     m.vx=Math.cos(m.heading)*sp; m.vz=Math.sin(m.heading)*sp;
     let nx=p.x+m.vx*dt, nz=p.z+m.vz*dt;
     if(solidAtCell(nx,p.y+0.2,p.z)){ m.heading+=Math.PI; nx=p.x; }
@@ -672,8 +681,8 @@
     nudeok.grp.traverse(o=>{ if(o.material&&o.material.color){ const c=o.material.color.clone(); o.material.color.set(0xff5544); setTimeout(()=>o.material.color.copy(c),120);} });
     if(nudeok.hp<=0){ nudeok.alive=false; const g=nudeok.grp, lb=nudeok.label;
       g.scale.set(1,0.1,1); setTimeout(()=>{scene.remove(g);scene.remove(lb);},300);
-      toast('Nudeok Dosa defeated!','Victory'); chimeUp();
-    } else { toast('Nudeok Dosa — '+nudeok.hp+' hits left','Hit'); }
+      toast('Jisnu defeated!','Victory'); chimeUp();
+    } else { toast('Jisnu — '+nudeok.hp+' hits left','Hit'); }
   }
   function fireArrow(){
     if(!bowEquipped){ toast('Press B to draw your bow first','Bow'); return; }
@@ -712,10 +721,10 @@
   function resetPlayer(){ player.pos.set(SPAWN.x,SPAWN.y,SPAWN.z); player.vel.set(0,0,0); player.yaw=Math.PI; player.pitch=0; }
 
   // ---- Camera view mode (first-person <-> top-down) ------------------------
-  let viewMode='fp';   // 'fp' | 'top'
+  let viewMode='fp';   // 'fp' | 'top' (top = third-person behind-the-back)
   function toggleView(){ viewMode = viewMode==='fp' ? 'top' : 'fp';
-    const b=document.getElementById('bView'); if(b) b.textContent = viewMode==='fp'?'TOP':'1ST';
-    toast(viewMode==='top'?'Top-down view':'First-person view','View'); }
+    const b=document.getElementById('bView'); if(b) b.textContent = viewMode==='fp'?'3RD':'1ST';
+    toast(viewMode==='top'?'Third-person view':'First-person view','View'); }
   // A little block-girl avatar shown only in top-down so you can see Jhimu.
   const jhimuAvatar=(function(){ const g=new THREE.Group();
     const body=boxMesh(0.55,0.7,0.35,0xd96a8f); body.position.y=0.95; g.add(body);
@@ -862,44 +871,64 @@
   function blip(f,d){ if(!actx)return;const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.09,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d+0.02);}
   function chime(n){blip(420*Math.pow(2,n/12),0.11);} function chimeUp(){blip(523,0.12);setTimeout(()=>blip(659,0.12),80);setTimeout(()=>blip(784,0.18),160);}
 
-  // ---- Calm background music ----------------------------------------------
-  // A gentle, slow ambient pad: soft sine voices playing a looping chord
-  // progression through a low-pass filter, with a quiet master gain so it
-  // sits far under the sound effects. Loops for the whole session.
+  // ---- Peaceful piano music -----------------------------------------------
+  // A slow, sparse piano: struck notes (fast attack, long decay, a couple of
+  // soft harmonics for body) play a gentle pentatonic melody over very quiet
+  // sustained pad chords. Pretty but calm. Loops for the whole session.
   let music=null, musicOn=true;
   function startMusic(){
     if(!actx||music)return;
     const master=actx.createGain(); master.gain.value=0.0;
-    const lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=900; lp.Q.value=0.4;
+    const lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2600; lp.Q.value=0.3;
     lp.connect(master).connect(actx.destination);
-    // fade in slowly
     master.gain.setValueAtTime(0.0001,actx.currentTime);
-    master.gain.exponentialRampToValueAtTime(0.09,actx.currentTime+4);
-    // A minor-pentatonic-ish calm progression (Hz): Am - F - C - G feel
-    const chords=[[220,261.63,329.63],[174.61,220,261.63],[196,246.94,329.63],[164.81,196,246.94]];
-    const beat=4.2;                       // seconds per chord — slow and breathy
-    let ci=0;
-    function voice(f,t,dur){ const o=actx.createOscillator(),g=actx.createGain();
-      o.type='sine'; o.frequency.value=f;
-      // tiny detune shimmer
-      o.detune.value=(Math.random()*8-4);
+    master.gain.exponentialRampToValueAtTime(0.16,actx.currentTime+3);
+
+    // A single struck piano note: fundamental + 2nd & 3rd harmonics, each with
+    // a plucked envelope (near-instant attack, slow exponential tail).
+    function piano(f,t,dur,vel){ vel=vel||1;
+      const parts=[[1,1.0],[2,0.4],[3,0.16]];
+      for(const [mult,amp] of parts){ const o=actx.createOscillator(),g=actx.createGain();
+        o.type='triangle'; o.frequency.value=f*mult;
+        const peak=0.12*amp*vel;
+        g.gain.setValueAtTime(0.0001,t);
+        g.gain.exponentialRampToValueAtTime(peak,t+0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+        o.connect(g).connect(lp); o.start(t); o.stop(t+dur+0.05);
+      }
+    }
+    // A very soft sustained pad note under the melody.
+    function pad(f,t,dur){ const o=actx.createOscillator(),g=actx.createGain();
+      o.type='sine'; o.frequency.value=f; o.detune.value=(Math.random()*6-3);
       g.gain.setValueAtTime(0.0001,t);
-      g.gain.exponentialRampToValueAtTime(0.11,t+dur*0.35);
+      g.gain.exponentialRampToValueAtTime(0.03,t+dur*0.4);
       g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
       o.connect(g).connect(lp); o.start(t); o.stop(t+dur+0.1);
     }
-    function schedule(){ if(!music)return; const t=actx.currentTime+0.05; const ch=chords[ci%chords.length];
-      for(const f of ch) voice(f,t,beat*1.15);
-      // a soft high sparkle now and then
-      if(Math.random()<0.5) voice(ch[2]*2,t+beat*0.5,beat*0.8);
+
+    // C major pentatonic across two octaves (Hz): C D E G A …
+    const scale=[261.63,293.66,329.63,392.00,440.00,523.25,587.33,659.25,783.99,880.00];
+    // Chord roots the melody drifts over: C – Am – F – G (quiet pad).
+    const padChords=[[130.81,196.00,261.63],[110.00,164.81,220.00],[174.61,220.00,261.63],[196.00,246.94,293.66]];
+    const bar=6.0;              // seconds per bar — unhurried
+    let prev=4, ci=0;
+    function schedule(){ if(!music)return; const t0=actx.currentTime+0.05;
+      // pad chord for the whole bar
+      for(const f of padChords[ci%padChords.length]) pad(f,t0,bar*1.1);
+      // 3–4 melody notes spread across the bar, stepping gently around the scale
+      const n=3+(Math.random()<0.5?1:0);
+      for(let i=0;i<n;i++){ const t=t0 + (i/n)*bar + Math.random()*0.3;
+        const step=(Math.random()*5|0)-2; prev=Math.max(0,Math.min(scale.length-1,prev+step));
+        piano(scale[prev], t, 3.2, 0.7+Math.random()*0.3);
+      }
       ci++;
     }
     schedule();
-    const timer=setInterval(schedule,beat*1000);
+    const timer=setInterval(schedule,bar*1000);
     music={master,lp,timer};
   }
   function toggleMusic(){ if(!actx)return; musicOn=!musicOn;
-    if(music){ music.master.gain.exponentialRampToValueAtTime(musicOn?0.09:0.0001, actx.currentTime+0.6); }
+    if(music){ music.master.gain.exponentialRampToValueAtTime(musicOn?0.16:0.0001, actx.currentTime+0.6); }
     const b=document.getElementById('bMusic'); if(b) b.textContent=musicOn?'♪':'✕';
     toast(musicOn?'Music on':'Music off','Audio');
   }
@@ -914,14 +943,21 @@
     const dt=Math.min(0.05,(now-last)/1000); last=now;
     if(started){ update(dt); updateMobs(dt); updateNudeok(dt); updateArrows(dt); gamesUpdate(); }
     if(viewMode==='top'){
-      // bird's-eye: camera lifted high above Jhimu, looking straight down,
-      // yaw still turns the world so movement stays oriented.
-      const hcam=28, d=getLookDir();
-      camera.position.set(player.pos.x - d.x*2, player.pos.y+hcam, player.pos.z - d.z*2);
-      camera.lookAt(player.pos.x, player.pos.y, player.pos.z);
+      // third-person: camera floats behind and a little above Jhimu, looking
+      // where she looks. It pulls in if a block sits between it and her head,
+      // so it never clips through terrain.
+      const d=getLookDir();
+      const head=new THREE.Vector3(player.pos.x, player.pos.y+PH.eye, player.pos.z);
+      const dist=4.2, up=0.9;
+      // march back from the head along -look until we'd hit a solid block
+      let back=dist;
+      for(let b=0.4;b<=dist;b+=0.3){ const cx=head.x-d.x*b, cy=head.y-d.y*b+up, cz=head.z-d.z*b;
+        if(isSolid(getV(Math.floor(cx),Math.floor(cy),Math.floor(cz)))){ back=Math.max(1.0,b-0.4); break; } }
+      camera.position.set(head.x-d.x*back, head.y-d.y*back+up, head.z-d.z*back);
+      camera.lookAt(head.x+d.x, head.y+d.y, head.z+d.z);
       jhimuAvatar.visible=true;
       jhimuAvatar.position.set(player.pos.x,player.pos.y,player.pos.z);
-      jhimuAvatar.rotation.y=player.yaw;
+      jhimuAvatar.rotation.y=player.yaw;        // face the way she's looking
     } else {
       camera.position.set(player.pos.x,player.pos.y+PH.eye,player.pos.z);
       const d=getLookDir(); camera.lookAt(camera.position.x+d.x,camera.position.y+d.y,camera.position.z+d.z);
@@ -1154,8 +1190,8 @@
       resetPlayer();
       document.getElementById('startBtn').style.display='';
       document.getElementById('hint').textContent=isTouch
-        ? 'Stick to move · drag to look · JUMP / BREAK / PLACE · BOW then FIRE to shoot Nudeok Dosa · TOP for bird’s-eye · step on a glowing pad for a mini-game.'
-        : 'Click to look · WASD + Space · left-click break / right-click place · B draw bow, F fire (hunt old man Nudeok Dosa) · V top-down view · E for mini-games.';
+        ? 'Stick to move · drag to look · JUMP / BREAK / PLACE · BOW then FIRE to shoot old man Jisnu · 3RD for third-person · step on a glowing pad for a mini-game.'
+        : 'Click to look · WASD + Space · left-click break / right-click place · B draw bow, F fire (hunt old man Jisnu) · V third-person view · E for mini-games.';
     });
     requestAnimationFrame(frame);
   }
